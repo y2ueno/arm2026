@@ -92,10 +92,11 @@
     const params = new URLSearchParams(window.location.search);
     const STAMP_USER_ID = params.get('stamp_user_id') || '---';
     const EMAIL = params.get('email') || '---';
+    const LAP = params.get('lap') || '1'; // 👈 lapを取得（未指定時は1）
 
     document.getElementById('display-email').innerText = EMAIL;
 
-    // スキャナーの初期化（Html5Qrcode クラスを直接制御）
+    // スキャナーの初期化
     const html5Qrcode = new Html5Qrcode("reader");
     
     const config = { 
@@ -106,36 +107,32 @@
 
     // スキャン成功時の処理
     function onScanSuccess(decodedText) {
-        // 二重送信を物理的に防ぐため、即座にカメラのハードウェアストリームを停止させる
         html5Qrcode.stop().then(() => {
             processSuccess(decodedText);
         }).catch(err => {
             console.error("カメラ停止エラー", err);
-            processSuccess(decodedText); // 万が一停止に失敗しても送信・画面表示は強行する
+            processSuccess(decodedText);
         });
     }
 
     // 画面切り替えとMakeへの送信
     function processSuccess(decodedText) {
-        // 1. スキャナー表示エリアを非表示にする
         document.getElementById('reader').style.display = 'none';
-        
-        // 2. 即座に成功画面を表示する
         document.getElementById('result-container').style.display = 'block';
 
-        // 3. MakeのWebhookへデータを送信（バックグラウンドで実行）
-        const finalUrl = `${WEBHOOK_URL}?spotId=${encodeURIComponent(decodedText)}&stamp_user_id=${encodeURIComponent(STAMP_USER_ID)}&email=${encodeURIComponent(EMAIL)}`;
+        // 3. MakeのWebhookへデータを送信（&lap パラメータを追加）
+        const finalUrl = `${WEBHOOK_URL}?spotId=${encodeURIComponent(decodedText)}&stamp_user_id=${encodeURIComponent(STAMP_USER_ID)}&email=${encodeURIComponent(EMAIL)}&lap=${encodeURIComponent(LAP)}`;
         
         fetch(finalUrl)
             .then(response => console.log("Data sent to Make"))
             .catch(error => console.error("Network error, but display remains."));
     }
 
-    // 画面が開いた瞬間に「背面カメラ」で自動起動する
+    // 画面起動時の自動カメラスタート
     window.addEventListener('DOMContentLoaded', () => {
         setTimeout(() => {
             html5Qrcode.start(
-                { facingMode: "environment" }, // 💥ここでインカメラを拒否し、背面カメラを強制起動
+                { facingMode: "environment" },
                 config,
                 onScanSuccess
             ).then(() => {
@@ -144,7 +141,7 @@
                 console.error("カメラ起動エラー:", err);
                 document.getElementById('loading').innerHTML = `<span style="color:red; font-weight:bold;">【エラー】カメラの起動に失敗しました。<br>ブラウザの設定でカメラ利用を許可してください。</span>`;
             });
-        }, 1000); // 端末の準備時間を考慮して1秒待って安全に起動
+        }, 1000);
     });
 </script>
 
