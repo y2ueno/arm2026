@@ -2,148 +2,167 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>スタンプスキャナー</title>
-    <script src="https://cdn.jsdelivr.net/npm/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+    <script src="https://unpkg.com/html5-qrcode"></script>
     <style>
         body {
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-            margin: 0;
-            padding: 0;
-            background: #f8f9fa;
-            color: #333;
             text-align: center;
+            padding: 20px;
+            background-color: #f5f5f7;
+            color: #333;
         }
         .header {
-            background: #ffffff;
-            padding: 20px 15px;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
-            margin-bottom: 20px;
             font-size: 14px;
             color: #666;
+            margin-bottom: 15px;
         }
         #reader {
-            width: 92%;
-            max-width: 500px;
+            width: 100%;
+            max-width: 400px;
             margin: 0 auto;
-            background: #000; /* カメラ起動前は真っ黒にして違和感を無くす */
             border-radius: 12px;
             overflow: hidden;
-            border: 1px solid #ddd;
-            min-height: 300px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
         }
-        /* 結果表示エリア（最初から緑の成功スタイル） */
-        #result-container {
-            margin: 20px;
-            padding: 25px 20px;
-            border-radius: 12px;
-            display: none;
-            background: #d4edda;
-            color: #155724;
-            border: 1px solid #c3e6cb;
-        }
-        /* 既に取得済みのスタンプは無効です */
-        .disclaimer {
-            color: #dc3545;
+        #loading {
+            margin: 20px 0;
             font-weight: bold;
-            font-size: 16px;
-            margin-top: 20px;
-            padding-top: 15px;
-            border-top: 1px dashed rgba(220, 53, 69, 0.3);
+            color: #007aff;
         }
-        .close-guide {
-            font-size: 13px;
-            color: #666;
-            margin-top: 15px;
+        #result-container {
+            display: none;
+            max-width: 400px;
+            margin: 20px auto;
+            padding: 25px 20px;
+            border-radius: 16px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.08);
         }
-        .loading-msg {
-            color: #666;
+        /* 新規獲得成功スタイル（緑） */
+        .status-success {
+            background-color: #e8f5e9;
+            border: 2px solid #81c784;
+            color: #2e7d32;
+        }
+        /* 重複スキャン時スタイル（黄・オレンジ） */
+        .status-duplicate {
+            background-color: #fffde7;
+            border: 2px solid #ffd54f;
+            color: #f57f17;
+        }
+        .result-title {
+            font-size: 20px;
+            font-weight: bold;
+            margin-bottom: 10px;
+        }
+        .result-msg {
             font-size: 14px;
-            margin-top: 10px;
+            line-height: 1.5;
+        }
+        .sub-note {
+            margin-top: 15px;
+            font-size: 12px;
+            color: #777;
+            border-top: 1px dashed #ccc;
+            padding-top: 10px;
         }
     </style>
 </head>
 <body>
 
-<div class="header">
-    ログイン中: <span id="display-email">読み込み中...</span>
-</div>
-
-<div id="reader"></div>
-<div id="loading" class="loading-msg">カメラを起動しています...</div>
-
-<div id="result-container">
-    <h2 style="margin: 0 0 10px 0; font-size: 22px;">✅ スタンプ獲得！</h2>
-    <p style="margin: 0; font-size: 16px;">正常に記録されました。</p>
-    
-    <div class="disclaimer">
-        ⚠️ 既に取得済みのスタンプは無効です
+    <div class="header">
+        ログイン中: <span id="display-email">---</span>
     </div>
-    
-    <div class="close-guide">
-        左上の「×」または「完了」を押して<br>アプリに戻ってください。
+
+    <div id="loading">カメラを起動中...</div>
+    <div id="reader"></div>
+
+    <div id="result-container">
+        <div id="result-title" class="result-title"></div>
+        <div id="result-msg" class="result-msg"></div>
+        <div class="sub-note">
+            左上の「✕」または「完了」を押してアプリに戻ってください。
+        </div>
     </div>
-</div>
 
-<script>
-    const WEBHOOK_URL = 'https://hook.us2.make.com/m0vinx83pe2fmwwnt4g3r83fiak6r117';
-    
-    // URLからパラメータ取得
-    const params = new URLSearchParams(window.location.search);
-    const STAMP_USER_ID = params.get('stamp_user_id') || '---';
-    const EMAIL = params.get('email') || '---';
-    const LAP = params.get('lap') || '1'; // 👈 lapを取得（未指定時は1）
-
-    document.getElementById('display-email').innerText = EMAIL;
-
-    // スキャナーの初期化
-    const html5Qrcode = new Html5Qrcode("reader");
-    
-    const config = { 
-        fps: 10, 
-        qrbox: 250,
-        aspectRatio: 1.0
-    };
-
-    // スキャン成功時の処理
-    function onScanSuccess(decodedText) {
-        html5Qrcode.stop().then(() => {
-            processSuccess(decodedText);
-        }).catch(err => {
-            console.error("カメラ停止エラー", err);
-            processSuccess(decodedText);
-        });
-    }
-
-    // 画面切り替えとMakeへの送信
-    function processSuccess(decodedText) {
-        document.getElementById('reader').style.display = 'none';
-        document.getElementById('result-container').style.display = 'block';
-
-        // 3. MakeのWebhookへデータを送信（&lap パラメータを追加）
-        const finalUrl = `${WEBHOOK_URL}?spotId=${encodeURIComponent(decodedText)}&stamp_user_id=${encodeURIComponent(STAMP_USER_ID)}&email=${encodeURIComponent(EMAIL)}&lap=${encodeURIComponent(LAP)}`;
+    <script>
+        const WEBHOOK_URL = 'https://hook.us2.make.com/m0vinx83pe2fmwwnt4g3r83fiak6r117';
         
-        fetch(finalUrl)
-            .then(response => console.log("Data sent to Make"))
-            .catch(error => console.error("Network error, but display remains."));
-    }
+        const params = new URLSearchParams(window.location.search);
+        const STAMP_USER_ID = params.get('stamp_user_id') || '---';
+        const EMAIL = params.get('email') || '---';
+        const LAP = params.get('lap') || '1';
 
-    // 画面起動時の自動カメラスタート
-    window.addEventListener('DOMContentLoaded', () => {
-        setTimeout(() => {
-            html5Qrcode.start(
-                { facingMode: "environment" },
-                config,
-                onScanSuccess
-            ).then(() => {
-                document.getElementById('loading').style.display = 'none';
+        document.getElementById('display-email').innerText = EMAIL;
+
+        const html5Qrcode = new Html5Qrcode("reader");
+        const config = { fps: 10, qrbox: 250, aspectRatio: 1.0 };
+
+        function onScanSuccess(decodedText) {
+            html5Qrcode.stop().then(() => {
+                processSuccess(decodedText);
             }).catch(err => {
-                console.error("カメラ起動エラー:", err);
-                document.getElementById('loading').innerHTML = `<span style="color:red; font-weight:bold;">【エラー】カメラの起動に失敗しました。<br>ブラウザの設定でカメラ利用を許可してください。</span>`;
+                console.error("カメラ停止エラー", err);
+                processSuccess(decodedText);
             });
-        }, 1000);
-    });
-</script>
+        }
 
+        function processSuccess(decodedText) {
+            // スキャン成功後、処理中メッセージを表示
+            document.getElementById('reader').style.display = 'none';
+            document.getElementById('loading').style.display = 'block';
+            document.getElementById('loading').innerText = '⏳ 重複確認・記録中...';
+
+            const finalUrl = `${WEBHOOK_URL}?spotId=${encodeURIComponent(decodedText)}&stamp_user_id=${encodeURIComponent(STAMP_USER_ID)}&email=${encodeURIComponent(EMAIL)}&lap=${encodeURIComponent(LAP)}`;
+            
+            fetch(finalUrl)
+                .then(response => response.json())
+                .then(data => {
+                    document.getElementById('loading').style.display = 'none';
+                    const container = document.getElementById('result-container');
+                    const title = document.getElementById('result-title');
+                    const msg = document.getElementById('result-msg');
+
+                    container.style.display = 'block';
+
+                    if (data.status === 'duplicate') {
+                        // 重複時の画面表示（黄色枠）
+                        container.className = 'status-duplicate';
+                        title.innerText = '⚠️ 取得済みのスタンプです';
+                        msg.innerText = 'このスタンプは現在の周回で獲得済みです。';
+                    } else {
+                        // 新規獲得時の画面表示（緑色枠）
+                        container.className = 'status-success';
+                        title.innerText = '✅ スタンプ獲得！';
+                        msg.innerText = '正常に記録されました。';
+                    }
+                })
+                .catch(error => {
+                    console.error("通信エラー:", error);
+                    document.getElementById('loading').style.display = 'none';
+                    const container = document.getElementById('result-container');
+                    container.style.display = 'block';
+                    container.className = 'status-success';
+                    document.getElementById('result-title').innerText = '✅ スキャン完了';
+                    document.getElementById('result-msg').innerText = '処理を受け付けました。';
+                });
+        }
+
+        window.addEventListener('DOMContentLoaded', () => {
+            setTimeout(() => {
+                html5Qrcode.start(
+                    { facingMode: "environment" },
+                    config,
+                    onScanSuccess
+                ).then(() => {
+                    document.getElementById('loading').style.display = 'none';
+                }).catch(err => {
+                    console.error("カメラ起動エラー:", err);
+                    document.getElementById('loading').innerHTML = `<span style="color:red; font-weight:bold;">【エラー】カメラの起動に失敗しました。<br>ブラウザの設定でカメラ利用を許可してください。</span>`;
+                });
+            }, 1000);
+        });
+    </script>
 </body>
 </html>
