@@ -39,17 +39,23 @@
             border-radius: 16px;
             box-shadow: 0 4px 15px rgba(0,0,0,0.08);
         }
-        /* 新規獲得成功スタイル（緑） */
+        /* 新規獲得成功（緑） */
         .status-success {
             background-color: #e8f5e9;
             border: 2px solid #81c784;
             color: #2e7d32;
         }
-        /* 重複スキャン時スタイル（黄・オレンジ） */
+        /* 重複判定（黄・オレンジ） */
         .status-duplicate {
             background-color: #fffde7;
             border: 2px solid #ffd54f;
             color: #f57f17;
+        }
+        /* 通信・システムエラー（赤） */
+        .status-error {
+            background-color: #ffebee;
+            border: 2px solid #ef5350;
+            color: #c62828;
         }
         .result-title {
             font-size: 20px;
@@ -59,6 +65,7 @@
         .result-msg {
             font-size: 14px;
             line-height: 1.5;
+            word-break: break-all;
         }
         .sub-note {
             margin-top: 15px;
@@ -109,7 +116,6 @@
         }
 
         function processSuccess(decodedText) {
-            // スキャン成功後、処理中メッセージを表示
             document.getElementById('reader').style.display = 'none';
             document.getElementById('loading').style.display = 'block';
             document.getElementById('loading').innerText = '⏳ 重複確認・記録中...';
@@ -117,7 +123,12 @@
             const finalUrl = `${WEBHOOK_URL}?spotId=${encodeURIComponent(decodedText)}&stamp_user_id=${encodeURIComponent(STAMP_USER_ID)}&email=${encodeURIComponent(EMAIL)}&lap=${encodeURIComponent(LAP)}`;
             
             fetch(finalUrl)
-                .then(response => response.json())
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error(`HTTP Error: ${response.status}`);
+                    }
+                    return response.json();
+                })
                 .then(data => {
                     document.getElementById('loading').style.display = 'none';
                     const container = document.getElementById('result-container');
@@ -127,25 +138,30 @@
                     container.style.display = 'block';
 
                     if (data.status === 'duplicate') {
-                        // 重複時の画面表示（黄色枠）
+                        // 重複スキャン時
                         container.className = 'status-duplicate';
                         title.innerText = '⚠️ 取得済みのスタンプです';
                         msg.innerText = 'このスタンプは現在の周回で獲得済みです。';
-                    } else {
-                        // 新規獲得時の画面表示（緑色枠）
+                    } else if (data.status === 'success') {
+                        // 新規獲得成功時
                         container.className = 'status-success';
                         title.innerText = '✅ スタンプ獲得！';
                         msg.innerText = '正常に記録されました。';
+                    } else {
+                        // 返却値が想定外の場合
+                        container.className = 'status-error';
+                        title.innerText = '⚠️ 応答形式エラー';
+                        msg.innerText = `データ形式が正しくありません: ${JSON.stringify(data)}`;
                     }
                 })
                 .catch(error => {
-                    console.error("通信エラー:", error);
+                    console.error("通信エラー詳細:", error);
                     document.getElementById('loading').style.display = 'none';
                     const container = document.getElementById('result-container');
                     container.style.display = 'block';
-                    container.className = 'status-success';
-                    document.getElementById('result-title').innerText = '✅ スキャン完了';
-                    document.getElementById('result-msg').innerText = '処理を受け付けました。';
+                    container.className = 'status-error';
+                    document.getElementById('result-title').innerText = '⚠️ 通信・判定エラー';
+                    document.getElementById('result-msg').innerText = `エラー詳細: ${error.message}`;
                 });
         }
 
