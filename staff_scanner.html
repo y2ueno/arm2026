@@ -107,20 +107,31 @@
     <button id="reset-btn" onclick="resetScanner()">次の人をスキャンする</button>
 
     <script>
-        // ★後ほどMakeで作成する「スタッフ用WebhookのURL」をここに入れます
         const MAKE_WEBHOOK_URL = "https://hook.us2.make.com/pbmr2wbph1pctqzml5wan7qjet3h2tlp";
         
-        let html5QrcodeScanner;
+        let html5QrCode;
         let isProcessing = false;
 
-        // スキャナーの初期化
+        // スキャナーの直接起動（背面カメラ強制）
         function startScanner() {
-            html5QrcodeScanner = new Html5QrcodeScanner("reader", { 
+            html5QrCode = new Html5Qrcode("reader");
+            
+            const config = { 
                 fps: 10, 
-                qrbox: {width: 250, height: 250},
-                facingMode: "environment"
-            }, false);
-            html5QrcodeScanner.render(onScanSuccess, onScanFailure);
+                qrbox: { width: 250, height: 250 }
+            };
+
+            // facingMode: "environment" で背面カメラを指定して直接スタート
+            html5QrCode.start(
+                { facingMode: "environment" }, 
+                config, 
+                onScanSuccess, 
+                onScanFailure
+            ).catch(err => {
+                const statusDiv = document.getElementById('status-message');
+                statusDiv.className = 'error';
+                statusDiv.innerHTML = '❌ カメラの起動に失敗しました。カメラ使用権限を許可してください。';
+            });
         }
 
         // QR読み取り成功時の処理
@@ -128,10 +139,11 @@
             if (isProcessing) return; // 処理中は二重スキャン防止
             isProcessing = true;
 
-            const email = decodedText.trim().toLowerCase(); // 空白除去と小文字化
+            const email = decodedText.trim().toLowerCase();
 
-            // スキャンを一時停止し、UIをロード中に変更
-            html5QrcodeScanner.pause();
+            // スキャン停止＆読み込み表示
+            try { html5QrCode.pause(true); } catch(e) {}
+            
             const statusDiv = document.getElementById('status-message');
             statusDiv.className = 'loading';
             statusDiv.innerHTML = '⏳ 判定中...（そのままお待ちください）';
@@ -144,10 +156,10 @@
             })
             .then(response => {
                 if (!response.ok) throw new Error('通信エラーが発生しました');
-                return response.json(); // MakeからのJSONレスポンス（{ result: "A賞" }等）をパース
+                return response.json();
             })
             .then(data => {
-                // 成功：カメラを非表示にして結果をデカデカと表示
+                // 成功：カメラ枠非表示＆結果表示
                 document.getElementById('reader').style.display = 'none';
                 statusDiv.style.display = 'none';
                 
@@ -155,7 +167,6 @@
                 const prizeText = document.getElementById('prize-text');
                 const resetBtn = document.getElementById('reset-btn');
                 
-                // Makeから返ってきた結果を表示
                 prizeText.innerText = data.result || '結果不明';
                 resultContainer.style.display = 'block';
                 resetBtn.style.display = 'block';
@@ -163,22 +174,21 @@
             .catch(error => {
                 statusDiv.className = 'error';
                 statusDiv.innerHTML = '❌ エラー: ' + error.message;
-                // 3秒後にスキャン再開
+                
                 setTimeout(() => {
                     isProcessing = false;
                     statusDiv.className = 'info';
                     statusDiv.innerHTML = 'お客様のQRコードを読み取ってください';
-                    html5QrcodeScanner.resume();
+                    try { html5QrCode.resume(); } catch(e) {}
                 }, 3000);
             });
         }
 
         function onScanFailure(error) {
-            // 読み取れなかった時のエラーは頻発するのでコンソールのみ（画面には出さない）
-            // console.warn(`Code scan error = ${error}`);
+            // スキャン未検知ログ（無視）
         }
 
-        // 「次の人をスキャンする」ボタンの処理
+        // 「次の人をスキャンする」ボタン処理
         function resetScanner() {
             isProcessing = false;
             document.getElementById('reader').style.display = 'block';
@@ -189,10 +199,10 @@
             document.getElementById('result-container').style.display = 'none';
             document.getElementById('reset-btn').style.display = 'none';
             
-            html5QrcodeScanner.resume();
+            try { html5QrCode.resume(); } catch(e) {}
         }
 
-        // ページ読み込み時にスキャナー起動
+        // ページ読み込み時に即起動
         window.onload = startScanner;
     </script>
 </body>
